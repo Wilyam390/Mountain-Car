@@ -1,0 +1,29 @@
+# Core dependencies for Mountain Car RL project
+# Python 3.9+
+
+# Reinforcement Learning & Environment
+gymnasium==0.28.1
+numpy==1.24.3
+
+# Deep Learning (for DQN/Policy Gradient phases)
+torch==2.0.0
+torchvision==0.15.0
+
+# Monitoring & Visualization
+tensorboard==2.13.0
+matplotlib==3.7.1
+seaborn==0.12.2
+
+# Data handling & analysis
+scipy==1.11.0
+pandas==2.0.2
+
+# Utilities
+pyyaml==6.0
+tqdm==4.65.0
+
+# Development (optional)
+ipython==8.14.0
+jupyter==1.0.0
+black==23.3.0
+flake8==6.0.0

@@ -1,0 +1,357 @@
+# ============================================================================
+# PYTHON
+# ============================================================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# ============================================================================
+# IDE / EDITOR
+# ============================================================================
+
+# Visual Studio Code
+.vscode/
+*.code-workspace
+.history/
+
+# PyCharm / JetBrains
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+.sublime/*
+
+# Vim
+*.swp
+*.swo
+*~
+.vim/
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# Nano
+.nano_history
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+.directory
+
+# ============================================================================
+# RL / EXPERIMENT OUTPUTS (Generated, not version controlled)
+# ============================================================================
+
+# Tensorboard logs
+runs/
+logs/
+events.out.tfevents.*
+lightning_logs/
+
+# Model checkpoints & weights
+*.pt
+*.pth
+*.pkl
+*.joblib
+models/
+checkpoints/
+weights/
+saved_models/
+
+# Experiment results & metrics
+results/
+experiments/
+outputs/
+
+# Training data & datasets
+data/
+datasets/
+*.csv
+*.npy
+*.npz
+*.h5
+*.hdf5
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+
+# ============================================================================
+# JUPYTER NOTEBOOKS (Optional: keep notebooks, ignore only checkpoints)
+# ============================================================================
+
+# Notebook output files (keep .ipynb but ignore generated outputs)
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# Notebook temporary files
+.ipynb_temp/
+nbconvert_temp/
+
+# ============================================================================
+# OS & MISC
+# ============================================================================
+
+# OS temporary files
+$RECYCLE.BIN/
+ehthumbs.db
+
+# Backup files
+*.bak
+*.backup
+*.orig
+*.swp
+*~
+
+# Cache
+.cache/
+*.cache
+
+# Local configuration
+config.local.yaml
+config.local.json
+secrets.json
+.env.local
+
+# ============================================================================
+# PROJECT-SPECIFIC
+# ============================================================================
+
+# Policy visualizations (large images)
+plots/
+figures/
+visualizations/
+
+# Large trained models
+*.model
+*.weights
+*.onnx
+*.pb
+
+# Environment replay buffers
+replay_buffer/
+transitions.pkl
+
+# Hyperparameter sweep results
+sweep_results/
+grid_search_cache/
+
+# Experiment tracking
+mlruns/
+wandb/
+.wandb/
+
+# Test outputs
+test_results/
+test_logs/
+
+# Documentation builds
+site/
+docs/_build/
+
+# ============================================================================
+# LARGE FILES (if accidentally added)
+# ============================================================================
+
+# Large data files
+*.zip
+*.tar
+*.tar.gz
+*.tar.bz2
+*.rar
+*.7z
+
+# Large video/media
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.wav
+*.mp3
+
+# ============================================================================
+# IDE-SPECIFIC (but may want to keep for team consistency)
+# ============================================================================
+
+# Uncomment if you DO want to version control IDE settings (not recommended):
+# !.vscode/settings.json
+# !.idea/runConfigurations/
+
+# ============================================================================
+# ALLOWED EXCEPTIONS (!) - These files SHOULD be tracked
+# ============================================================================
+
+# Keep source code
+!src/
+!src/**/*.py
+
+# Keep notebooks (but not checkpoints)
+!notebooks/
+!notebooks/**/*.ipynb
+
+# Keep documentation
+!SRC_README.md
+!INFRASTRUCTURE_SUMMARY.txt
+!requirements.txt
+!.gitignore
+!README.md
+
+# Keep configuration files
+!config/
+!config/**/*.yaml
+!config/**/*.json
+
+# Keep test files
+!tests/
+!tests/**/*.py
+
+# ============================================================================
+# END OF GITIGNORE
+# ============================================================================
+# This .gitignore is designed to:
+# 1. Exclude all temporary Python/IDE files
+# 2. Exclude large generated outputs (models, logs, results)
+# 3. Exclude experiment runs (tensorboard, checkpoints)
+# 4. Keep source code and documentation
+# 5. Keep notebooks but exclude checkpoints
+#
+# Customize as needed for your team's workflow
+# ============================================================================
