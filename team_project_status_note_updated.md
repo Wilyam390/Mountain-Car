@@ -55,7 +55,7 @@ What happened:
 
 So this setup is **not locked**. It may still fail overall, but we should finish the pending seeds before closing the door on it.
 
-## Files we added / what they do
+## Files I added / what they do
 
 ### Core implementation
 - `src/mcrl/envs.py`
@@ -128,3 +128,28 @@ python scripts/run_continuous_baselines_v2.py --scenarios continuous_fuel_l1 --a
 5. then update this note again before we assemble the final notebook
 6. do part 02 + presentation
 
+## Running scripts 
+
+If you want to re-run any experiment follow this steps
+
+### setup
+```bash
+python -m venv .venv
+source .venv/bin/activate   # on Windows Git Bash
+pip install -r requirements.txt
+
+### discrete baselines
+python scripts/run_tabular_baselines.py --episodes 5000 --seeds 0 1 2
+
+### discrete cleanup
+python scripts/run_tabular_cleanup.py --task all --episodes 7000 --seeds 0 1 2 3 4
+
+#<33> continuous standard
+python scripts/run_continuous_baselines_v2.py --scenarios continuous_standard --algorithms sac ppo --timesteps 300000 --seeds 0 1 2
+
+### continuous fuel binary
+python scripts/run_continuous_baselines_v2.py --scenarios continuous_fuel_binary --algorithms sac --timesteps 300000 --seeds 1 2 --cost-coef 0.05 --per-step-time-cost 0.10
+
+### continuous fuel l1
+python scripts/run_continuous_baselines_v2.py --scenarios continuous_fuel_l1 --algorithms sac --timesteps 300000 --seeds 0 1 2 --cost-coef 0.10 --per-step-time-cost 0.10
+```
