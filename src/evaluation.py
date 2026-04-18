@@ -117,10 +117,17 @@ def train_agent(
     metrics_list = []
     writer = None
 
-    if log_dir is not None and HAS_TENSORBOARD:
+    if log_dir is not None:
         log_dir = Path(log_dir)
         log_dir.mkdir(parents=True, exist_ok=True)
-        writer = SummaryWriter(log_dir=str(log_dir))
+
+        if HAS_TENSORBOARD:
+            try:
+                writer = SummaryWriter(log_dir=str(log_dir))
+            except Exception as e:
+                print(f"Warning: Failed to initialize TensorBoard writer: {e}")
+        else:
+            print(f"Warning: TensorBoard not available. Logs will be saved to {log_dir} but not viewable in TensorBoard.")
 
     for episode in range(n_episodes):
         state, _ = env.reset()
@@ -189,9 +196,89 @@ def train_agent(
 
     if writer is not None:
         writer.close()
+
+    # Return log_dir path if it was provided, otherwise empty string
+    if log_dir is not None:
         return metrics_list, str(log_dir)
 
     return metrics_list, ""
+
+
+def _extract_training_lists(metrics_list: List[EpisodeMetrics]) -> Tuple[List[float], List[int], List[int]]:
+    """
+    Extract rewards, successes, and steps from metrics list.
+
+    Utility for compatibility with notebooks that expect these lists.
+    """
+    episode_rewards = [m.reward for m in metrics_list]
+    episode_successes = [1 if m.success else 0 for m in metrics_list]
+    episode_steps = [m.steps for m in metrics_list]
+    return episode_rewards, episode_successes, episode_steps
+
+
+# Legacy wrapper for backwards compatibility with notebook interface
+def train_agent_legacy(
+    agent: Any,
+    env: Any,
+    n_episodes: int = 500,
+    verbose: bool = False,
+) -> Tuple[Any, List[float], List[int], List[int]]:
+    """
+    Training loop wrapper for notebook compatibility.
+
+    Returns: (agent, episode_rewards, episode_successes, episode_steps)
+
+    Compatible with agents that implement: train_step(state) -> (action, info) and learn(...)
+    """
+    metrics_list = []
+
+    for episode in range(n_episodes):
+        state, _ = env.reset()
+        total_reward = 0.0
+        steps = 0
+        success = False
+
+        while True:
+            # Agent decides action during training
+            action, learn_info = agent.train_step(state)
+
+            # Environment step
+            next_state, reward, terminated, truncated, env_info = env.step(action)
+            done = terminated or truncated
+
+            # Agent learns from transition
+            agent.learn(state, action, reward, next_state, done)
+
+            # Accumulate metrics
+            total_reward += reward
+            steps += 1
+
+            if terminated:
+                success = True
+
+            state = next_state
+            if done:
+                break
+
+        # Handle end-of-episode updates (for Monte Carlo, etc.)
+        if hasattr(agent, 'end_episode'):
+            agent.end_episode()
+
+        metrics_list.append(EpisodeMetrics(
+            episode=episode,
+            reward=total_reward,
+            steps=steps,
+            success=success,
+            final_position=float(state[0]),
+            max_velocity=float(np.abs(state[1])),
+        ))
+
+        if verbose and (episode + 1) % 50 == 0:
+            recent_success = sum(m.success for m in metrics_list[-50:]) / 50
+            print(f"Episode {episode + 1}/{n_episodes} - Success rate: {recent_success:.1%}")
+
+    episode_rewards, episode_successes, episode_steps = _extract_training_lists(metrics_list)
+    return agent, episode_rewards, episode_successes, episode_steps
 
 
 # ============================================================================
