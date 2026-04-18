@@ -23,22 +23,32 @@ def create_env(
     scenario: str = "min_steps",
     render: bool = False,
     seed: int = None,
+    fuel_cost: float = 0.25,
+    cost_coef: float = 0.05,
+    per_step_time_cost: float = 0.10,
 ) -> gym.Env:
     """
     Create and configure a Mountain Car environment.
 
     Args:
         env_type: "discrete" or "continuous"
-        scenario: "min_steps", "min_fuel", "linear_cost", "quadratic_cost"
+        scenario: Environment variant:
+            Discrete: "min_steps", "min_fuel", "discrete_standard", "discrete_fuel"
+            Continuous: "quadratic_cost", "linear_cost", "continuous_standard",
+                       "continuous_linear", "continuous_fuel_binary", "continuous_fuel_l1"
         render: Whether to enable rendering
         seed: Random seed for reproducibility
+        fuel_cost: Fuel cost coefficient for discrete (default 0.25)
+        cost_coef: Fuel cost coefficient for continuous (default 0.05)
+        per_step_time_cost: Per-step time penalty for continuous (default 0.10)
 
     Returns:
         Configured Gymnasium environment
 
     Examples:
         env = create_env("discrete", "min_steps", seed=42)
-        env = create_env("continuous", "quadratic_cost", seed=42)
+        env = create_env("continuous", "continuous_fuel_binary", seed=42)
+        env = create_env("discrete", "min_fuel", fuel_cost=0.25, seed=42)
     """
     if env_type == "discrete":
         env = gym.make("MountainCar-v0", render_mode="rgb_array" if render else None)
@@ -48,7 +58,14 @@ def create_env(
         raise ValueError(f"Unknown env_type: {env_type}. Use 'discrete' or 'continuous'")
 
     # Apply scenario-based reward wrapper
-    env = _apply_reward_wrapper(env, env_type, scenario)
+    env = _apply_reward_wrapper(
+        env,
+        env_type,
+        scenario,
+        fuel_cost=fuel_cost,
+        cost_coef=cost_coef,
+        per_step_time_cost=per_step_time_cost,
+    )
 
     if seed is not None:
         env.reset(seed=seed)
@@ -56,22 +73,46 @@ def create_env(
     return env
 
 
-def _apply_reward_wrapper(env, env_type: str, scenario: str) -> gym.Env:
+def _apply_reward_wrapper(
+    env,
+    env_type: str,
+    scenario: str,
+    fuel_cost: float = 0.25,
+    cost_coef: float = 0.05,
+    per_step_time_cost: float = 0.10,
+) -> gym.Env:
     """Wrap environment with scenario-specific reward function."""
 
     if env_type == "discrete":
-        if scenario == "min_steps":
+        if scenario == "min_steps" or scenario == "discrete_standard":
             return StandardRewardWrapper(env)
-        elif scenario == "min_fuel":
-            return MinFuelRewardWrapper(env)
+        elif scenario == "min_fuel" or scenario == "discrete_fuel":
+            return MinFuelRewardWrapper(env, fuel_cost=fuel_cost)
         else:
             raise ValueError(f"Unknown discrete scenario: {scenario}")
 
     elif env_type == "continuous":
-        if scenario == "quadratic_cost":
-            return env  # Default continuous env already uses this
-        elif scenario == "linear_cost":
+        # Add start range wrapper for consistency
+        env = ContinuousStartRangeWrapper(env)
+
+        if scenario == "quadratic_cost" or scenario == "continuous_standard":
+            return ContinuousRewardInfoWrapper(env)
+        elif scenario == "linear_cost" or scenario == "continuous_linear":
             return LinearActionCostWrapper(env)
+        elif scenario == "continuous_fuel_binary":
+            return ContinuousFuelCostWrapper(
+                env,
+                mode="binary",
+                cost_coef=cost_coef,
+                per_step_time_cost=per_step_time_cost,
+            )
+        elif scenario == "continuous_fuel_l1":
+            return ContinuousFuelCostWrapper(
+                env,
+                mode="l1",
+                cost_coef=cost_coef,
+                per_step_time_cost=per_step_time_cost,
+            )
         else:
             raise ValueError(f"Unknown continuous scenario: {scenario}")
 
@@ -80,33 +121,73 @@ def _apply_reward_wrapper(env, env_type: str, scenario: str) -> gym.Env:
 # REWARD WRAPPERS
 # ============================================================================
 
+# Helper function for continuous wrappers
+def _action_scalar(action: np.ndarray | list | tuple | float | int) -> float:
+    """Robustly convert an action into a scalar float."""
+    arr = np.asarray(action, dtype=np.float32).reshape(-1)
+    return float(arr[0])
+
+
 class StandardRewardWrapper(Wrapper):
     """
     Discrete Mountain Car with standard reward: -1 per step.
     Optimizes for minimum number of steps to goal.
+    Adds consistent info dict metrics.
     """
 
     def step(self, action):
-        next_state, reward, terminated, truncated, info = self.env.step(action)
-        # Default reward is -1 per step, +0 if goal reached
-        # (goal termination adds implicit bonus)
-        return next_state, reward, terminated, truncated, info
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        action_int = int(action)
+        info = dict(info)
+        info.update(
+            {
+                "base_reward": float(reward),
+                "engineered_reward": float(reward),
+                "fuel_cost": 0.0,
+                "time_cost": 0.0,
+                "thrust_action": int(action_int != 1),
+                "scenario": "discrete_standard",
+                "position": float(obs[0]),
+                "velocity": float(obs[1]),
+            }
+        )
+        return obs, float(reward), terminated, truncated, info
 
 
 class MinFuelRewardWrapper(Wrapper):
     """
     Discrete Mountain Car with fuel cost penalty.
     Reward: -1 (step cost) - fuel_cost
-    Fuel cost: 1 if action=left(0) or right(2), 0 if action=none(1)
+    Fuel cost: proportional to fuel_cost param if action=left(0) or right(2)
 
     Optimizes for fuel efficiency + reaching goal.
     """
 
+    def __init__(self, env: gym.Env, fuel_cost: float = 0.25):
+        super().__init__(env)
+        self.fuel_cost = float(fuel_cost)
+
     def step(self, action):
-        next_state, reward, terminated, truncated, info = self.env.step(action)
-        fuel_cost = 1.0 if action in [0, 2] else 0.0
-        modified_reward = reward - fuel_cost
-        return next_state, modified_reward, terminated, truncated, info
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        action_int = int(action)
+        thrust = int(action_int != 1)
+        fuel_cost = self.fuel_cost * thrust
+        shaped_reward = float(reward) - fuel_cost
+
+        info = dict(info)
+        info.update(
+            {
+                "base_reward": float(reward),
+                "engineered_reward": float(shaped_reward),
+                "fuel_cost": float(fuel_cost),
+                "time_cost": 0.0,
+                "thrust_action": thrust,
+                "scenario": "discrete_fuel",
+                "position": float(obs[0]),
+                "velocity": float(obs[1]),
+            }
+        )
+        return obs, float(shaped_reward), terminated, truncated, info
 
 
 class LinearActionCostWrapper(Wrapper):
@@ -114,20 +195,168 @@ class LinearActionCostWrapper(Wrapper):
     Continuous Mountain Car with linear action cost.
     Reward: -0.1 * |action| + goal_bonus
 
-    Penalizes large actions linearly.
+    Penalizes large actions linearly. Smoother alternative to quadratic.
     """
 
+    def __init__(self, env: gym.Env, non_null_threshold: float = 0.05):
+        super().__init__(env)
+        self.non_null_threshold = float(non_null_threshold)
+
     def step(self, action):
-        next_state, reward, terminated, truncated, info = self.env.step(action)
-        # In continuous env:
-        # reward = -0.1 * action^2 (default)
-        # We can override with linear cost:
-        action_val = float(action[0]) if isinstance(action, np.ndarray) else float(action)
-        linear_action_cost = -0.1 * abs(action_val)
-        # Preserve goal bonus if reached
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        action_value = _action_scalar(action)
+        linear_cost = 0.1 * abs(action_value)
         goal_bonus = 100.0 if terminated else 0.0
-        modified_reward = linear_action_cost + goal_bonus
-        return next_state, modified_reward, terminated, truncated, info
+        shaped_reward = goal_bonus - linear_cost
+
+        info = dict(info)
+        info.update(
+            {
+                "base_reward": float(reward),
+                "engineered_reward": float(shaped_reward),
+                "fuel_cost": float(linear_cost),
+                "linear_cost": float(linear_cost),
+                "time_cost": 0.0,
+                "goal_bonus": goal_bonus,
+                "non_null_action": int(abs(action_value) > self.non_null_threshold),
+                "action_abs": abs(action_value),
+                "scenario": "continuous_linear",
+                "position": float(obs[0]),
+                "velocity": float(obs[1]),
+            }
+        )
+        return obs, float(shaped_reward), terminated, truncated, info
+
+
+class ContinuousRewardInfoWrapper(Wrapper):
+    """
+    Continuous Mountain Car with standard (quadratic) action cost.
+    Adds metrics to the info dict for the standard continuous task.
+    Reward: Original env reward (which is -0.1 * action^2 + goal_bonus)
+    """
+
+    def __init__(self, env: gym.Env, non_null_threshold: float = 0.05):
+        super().__init__(env)
+        self.non_null_threshold = float(non_null_threshold)
+
+    def step(self, action):
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        action_value = _action_scalar(action)
+        quadratic_cost = 0.1 * (action_value ** 2)
+        goal_bonus = 100.0 if terminated else 0.0
+
+        info = dict(info)
+        info.update(
+            {
+                "base_reward": float(reward),
+                "engineered_reward": float(reward),
+                "fuel_cost": float(quadratic_cost),
+                "quadratic_cost": float(quadratic_cost),
+                "time_cost": 0.0,
+                "goal_bonus": goal_bonus,
+                "non_null_action": int(abs(action_value) > self.non_null_threshold),
+                "action_abs": abs(action_value),
+                "scenario": "continuous_standard",
+                "position": float(obs[0]),
+                "velocity": float(obs[1]),
+            }
+        )
+        return obs, float(reward), terminated, truncated, info
+
+
+class ContinuousFuelCostWrapper(Wrapper):
+    """
+    Continuous Mountain Car with explicit time and fuel costs.
+
+    Supports both binary and L1 fuel modes with customizable reward composition.
+    This wrapper enables control over action penalties and time costs for
+    energy-efficient control studies.
+
+    Parameters
+    ----------
+    mode : {'binary', 'l1'}
+        'binary' -> fixed cost when |action| > threshold
+        'l1'     -> linear cost proportional to |action|
+    cost_coef : float
+        Scaling factor for fuel cost (default 0.05)
+    per_step_time_cost : float
+        Per-step penalty for exploration (default 0.10)
+    reward_mode : {'replace', 'augment_original'}
+        'replace' -> reward = goal_bonus - time_cost - fuel_cost
+        'augment_original' -> reward = env_reward - time_cost - fuel_cost
+    """
+
+    def __init__(
+        self,
+        env: gym.Env,
+        mode: str = "binary",
+        cost_coef: float = 0.05,
+        non_null_threshold: float = 0.05,
+        per_step_time_cost: float = 0.10,
+        goal_bonus: float = 100.0,
+        reward_mode: str = "replace",
+    ):
+        super().__init__(env)
+        if mode not in {"binary", "l1"}:
+            raise ValueError("mode must be 'binary' or 'l1'")
+        if reward_mode not in {"replace", "augment_original"}:
+            raise ValueError("reward_mode must be 'replace' or 'augment_original'")
+        self.mode = mode
+        self.cost_coef = float(cost_coef)
+        self.non_null_threshold = float(non_null_threshold)
+        self.per_step_time_cost = float(per_step_time_cost)
+        self.goal_bonus = float(goal_bonus)
+        self.reward_mode = reward_mode
+
+    def step(self, action):
+        obs, raw_reward, terminated, truncated, info = self.env.step(action)
+        action_value = _action_scalar(action)
+        action_abs = abs(action_value)
+
+        if self.mode == "binary":
+            fuel_cost = self.cost_coef * float(action_abs > self.non_null_threshold)
+        else:  # l1
+            fuel_cost = self.cost_coef * action_abs
+
+        time_cost = self.per_step_time_cost
+        if self.reward_mode == "replace":
+            shaped_reward = (self.goal_bonus if terminated else 0.0) - time_cost - fuel_cost
+        else:  # augment_original
+            shaped_reward = float(raw_reward) - time_cost - fuel_cost
+
+        info = dict(info)
+        info.update(
+            {
+                "base_reward": float(raw_reward),
+                "engineered_reward": float(shaped_reward),
+                "fuel_cost": float(fuel_cost),
+                "quadratic_cost": float(0.1 * (action_value ** 2)),
+                "time_cost": float(time_cost),
+                "goal_bonus": self.goal_bonus if terminated else 0.0,
+                "non_null_action": int(action_abs > self.non_null_threshold),
+                "action_abs": action_abs,
+                "reward_mode": self.reward_mode,
+                "scenario": f"continuous_fuel_{self.mode}",
+                "position": float(obs[0]),
+                "velocity": float(obs[1]),
+            }
+        )
+        return obs, float(shaped_reward), terminated, truncated, info
+
+
+class ContinuousStartRangeWrapper(Wrapper):
+    """Optional reset-range wrapper for robustness and controlled experiments."""
+
+    def __init__(self, env: gym.Env, low: float = -0.6, high: float = -0.4):
+        super().__init__(env)
+        self.low = float(low)
+        self.high = float(high)
+
+    def reset(self, *, seed=None, options=None):
+        options = dict(options or {})
+        options.setdefault("low", self.low)
+        options.setdefault("high", self.high)
+        return self.env.reset(seed=seed, options=options)
 
 
 # ============================================================================

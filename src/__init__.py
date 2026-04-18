@@ -7,7 +7,9 @@ Core modules:
 - agents: Abstract and concrete agent implementations
 """
 
-import environment_utils, evaluation
+
+from . import environment_utils
+from . import evaluation
 from .agents import base_agent
 
 __all__ = ["environment_utils", "evaluation", "base_agent"]
