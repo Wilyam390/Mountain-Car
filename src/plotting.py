@@ -227,15 +227,62 @@ def plot_value_surface(
 # TRAJECTORY COLLECTION & VISUALIZATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# def collect_greedy_trajectories(
+#     env: gym.Env,
+#     q_table: np.ndarray,
+#     discretizer: StateDiscretizer,
+#     *,
+#     n_episodes: int = 10,
+#     seed: Optional[int] = 42,
+# ) -> List[dict]:
+#     """Collect multiple greedy episodes for visualization."""
+#     trajectories = []
+
+#     for episode_idx in range(n_episodes):
+#         ep_seed = None if seed is None else int(seed + episode_idx)
+
+#         state, _ = env.reset(seed=ep_seed)
+#         positions = [state[0]]
+#         velocities = [state[1]]
+#         actions = []
+
+#         done = False
+#         max_steps = 200
+
+#         while not done and len(positions) < max_steps + 1:
+#             state_disc = discretizer.discretize(state)
+#             action = int(np.argmax(q_table[state_disc]))
+#             actions.append(action)
+
+#             state, reward, terminated, truncated, info = env.step(action)
+#             done = terminated or truncated
+
+#             positions.append(state[0])
+#             velocities.append(state[1])
+
+#         trajectories.append(
+#             {
+#                 "positions": np.array(positions),
+#                 "velocities": np.array(velocities),
+#                 "actions": np.array(actions),
+#                 "success": bool(done),
+#                 "steps": len(actions),
+#             }
+#         )
+
+#     return trajectories
+
+
 def collect_greedy_trajectories(
     env: gym.Env,
     q_table: np.ndarray,
-    discretizer: StateDiscretizer,
+    discretizer,
     *,
     n_episodes: int = 10,
     seed: Optional[int] = 42,
+    max_steps: int = 500,
 ) -> List[dict]:
-    """Collect multiple greedy episodes for visualization."""
+    """Collect multiple greedy episodes including rewards."""
     trajectories = []
 
     for episode_idx in range(n_episodes):
@@ -245,16 +292,17 @@ def collect_greedy_trajectories(
         positions = [state[0]]
         velocities = [state[1]]
         actions = []
+        rewards = []
 
         done = False
-        max_steps = 200
 
-        while not done and len(positions) < max_steps + 1:
+        while not done and len(actions) < max_steps:
             state_disc = discretizer.discretize(state)
             action = int(np.argmax(q_table[state_disc]))
             actions.append(action)
 
             state, reward, terminated, truncated, info = env.step(action)
+            rewards.append(reward)
             done = terminated or truncated
 
             positions.append(state[0])
@@ -265,6 +313,7 @@ def collect_greedy_trajectories(
                 "positions": np.array(positions),
                 "velocities": np.array(velocities),
                 "actions": np.array(actions),
+                "rewards": np.array(rewards),
                 "success": bool(done),
                 "steps": len(actions),
             }
@@ -295,7 +344,6 @@ def plot_phase_portrait(
             alpha=0.7,
             color=color,
         )
-
         ax.plot(episode["positions"][0], episode["velocities"][0], "g*", markersize=12)
         ax.plot(episode["positions"][-1], episode["velocities"][-1], "r*", markersize=12)
 
@@ -309,7 +357,6 @@ def plot_phase_portrait(
     ax.legend()
 
     return ax
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # COMPARISON UTILITIES

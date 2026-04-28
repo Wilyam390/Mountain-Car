@@ -1,5 +1,5 @@
 """
-Evaluation and training utilities for Mountain Car RL agents.
+Evaluation and training utilities for Mountain Car RL experiments.
 
 Provides:
 - Generic training loop (works with any agent)
@@ -76,6 +76,18 @@ class AggregatedMetrics:
     def to_dict(self) -> Dict:
         """Convert to dictionary for JSON export."""
         return asdict(self)
+
+
+def _extract_training_lists(metrics_list: List[EpisodeMetrics]) -> Tuple[List[float], List[int], List[int]]:
+    """
+    Extract rewards, successes, and steps from metrics list.
+
+    Utility for compatibility with notebooks that expect these lists.
+    """
+    episode_rewards = [m.reward for m in metrics_list]
+    episode_successes = [1 if m.success else 0 for m in metrics_list]
+    episode_steps = [m.steps for m in metrics_list]
+    return episode_rewards, episode_successes, episode_steps
 
 
 # ============================================================================
@@ -198,24 +210,281 @@ def train_agent(
         writer.close()
 
     # Return log_dir path if it was provided, otherwise empty string
-    if log_dir is not None:
-        return metrics_list, str(log_dir)
-
-    return metrics_list, ""
+    return metrics_list, str(log_dir) if log_dir is not None else ""
 
 
-def _extract_training_lists(metrics_list: List[EpisodeMetrics]) -> Tuple[List[float], List[int], List[int]]:
+# ============================================================================
+# CONTINUOUS CONTROL TRAINING LOOP
+# ============================================================================
+
+def train_continuous_agent(
+    agent: Any,
+    env: Any,
+    n_episodes: int = 2000,
+    seed: int = 42,
+    eval_freq: int = 100,
+    verbose: bool = True,
+) -> List[EpisodeMetrics]:
     """
-    Extract rewards, successes, and steps from metrics list.
-
-    Utility for compatibility with notebooks that expect these lists.
+    Training loop for continuous-action agents on Mountain Car.
+    
+    Works with DQN, REINFORCE, A2C agents that output continuous actions.
+    
+    Args:
+        agent: Continuous action agent (DQN, REINFORCE, A2C)
+        env: Gymnasium environment (continuous Mountain Car)
+        n_episodes: Total training episodes
+        seed: Random seed for reproducibility
+        eval_freq: Print progress every N episodes
+        verbose: Print progress to stdout
+    
+    Returns:
+        List of EpisodeMetrics for each episode
     """
-    episode_rewards = [m.reward for m in metrics_list]
-    episode_successes = [1 if m.success else 0 for m in metrics_list]
-    episode_steps = [m.steps for m in metrics_list]
-    return episode_rewards, episode_successes, episode_steps
+    np.random.seed(seed)
+    env.reset(seed=seed)
+    
+    metrics_list = []
+    
+    for episode in range(n_episodes):
+        state, _ = env.reset()
+        total_reward = 0.0
+        steps = 0
+        success = False
+        total_fuel = 0.0
+        
+        while True:
+            # Agent selects action during training
+            action, _ = agent.train_step(state)
+            
+            # Environment step
+            next_state, reward, terminated, truncated, info = env.step(action)
+            done = terminated or truncated
+            
+            # Agent learns from transition
+            agent.learn(state, action, reward, next_state, done)
+            
+            # Accumulate metrics
+            total_reward += reward
+            total_fuel += info.get("fuel_cost", 0.0)
+            steps += 1
+            
+            if terminated:
+                success = True
+            
+            state = next_state
+            
+            if done:
+                break
+        
+        # Record episode metrics
+        ep_metrics = EpisodeMetrics(
+            episode=episode,
+            reward=total_reward,
+            steps=steps,
+            success=success,
+            fuel_used=total_fuel,
+            final_position=float(state[0]),
+        )
+        metrics_list.append(ep_metrics)
+        
+        # Evaluation checkpoint
+        if verbose and (episode + 1) % eval_freq == 0:
+            recent_metrics = metrics_list[max(0, episode - eval_freq + 1) : episode + 1]
+            recent_rewards = [m.reward for m in recent_metrics]
+            recent_success = sum(m.success for m in recent_metrics) / len(recent_metrics)
+            recent_steps = [m.steps for m in recent_metrics]
+            recent_fuel = [m.fuel_used for m in recent_metrics if m.fuel_used is not None]
+            
+            print(f"\n  Episode {episode + 1:5d}/{n_episodes}")
+            print(f"    Avg Reward:  {np.mean(recent_rewards):8.2f} (±{np.std(recent_rewards):.2f})")
+            print(f"    Success Rate: {recent_success:6.1%}")
+            print(f"    Avg Steps:   {np.mean(recent_steps):7.1f} (±{np.std(recent_steps):.1f})")
+            if recent_fuel:
+                print(f"    Avg Fuel:    {np.mean(recent_fuel):7.3f} (±{np.std(recent_fuel):.3f})")
+    
+    return metrics_list
 
 
+# ============================================================================
+# RESULTS SAVING/LOADING
+# ============================================================================
+
+def save_experiment_results(
+    results_dict: Dict[str, Dict[str, Dict[int, List[EpisodeMetrics]]]],
+    agents_dict: Dict[str, Dict[str, Dict[int, Any]]],
+    save_dir: str = "./results",
+    experiment_name: str = "continuous_control_phase7",
+) -> str:
+    """
+    Save trained agents and experiment results to disk.
+    
+    Saves:
+    - Metrics as JSON (easily readable and comparable)
+    - Trained agent models (PyTorch state dicts)
+    - Experiment configuration
+    
+    Args:
+        results_dict: {agent_name: {scenario_name: {seed: [EpisodeMetrics]}}}
+        agents_dict: {agent_name: {scenario_name: {seed: agent_object}}}
+        save_dir: Directory to save results
+        experiment_name: Name prefix for results folder
+    
+    Returns:
+        Path to saved results directory
+    """
+    from datetime import datetime
+    import json
+    
+    # Create timestamped directory
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    save_path = Path(save_dir) / f"{experiment_name}_{timestamp}"
+    save_path.mkdir(parents=True, exist_ok=True)
+    
+    # Save metrics as JSON
+    metrics_path = save_path / "metrics.json"
+    metrics_dict = {}
+    
+    for agent_name, scenarios in results_dict.items():
+        metrics_dict[agent_name] = {}
+        for scenario_name, seeds in scenarios.items():
+            metrics_dict[agent_name][scenario_name] = {}
+            for seed, metrics_list in seeds.items():
+                # Convert EpisodeMetrics to serializable dict
+                metrics_dict[agent_name][scenario_name][str(seed)] = [
+                    {
+                        "episode": m.episode,
+                        "reward": float(m.reward),
+                        "steps": int(m.steps),
+                        "success": bool(m.success),
+                        "fuel_used": float(m.fuel_used) if m.fuel_used else None,
+                        "final_position": float(m.final_position),
+                    }
+                    for m in metrics_list
+                ]
+    
+    with open(metrics_path, "w") as f:
+        json.dump(metrics_dict, f, indent=2)
+    print(f"✓ Saved metrics to: {metrics_path}")
+    
+    # Save trained agent models
+    models_path = save_path / "models"
+    models_path.mkdir(exist_ok=True)
+    
+    for agent_name, scenarios in agents_dict.items():
+        agent_path = models_path / agent_name
+        agent_path.mkdir(exist_ok=True)
+        
+        for scenario_name, seeds in scenarios.items():
+            scenario_path = agent_path / scenario_name
+            scenario_path.mkdir(exist_ok=True)
+            
+            for seed, agent in seeds.items():
+                seed_path = scenario_path / f"seed_{seed}"
+                seed_path.mkdir(exist_ok=True)
+                
+                # Save agent model
+                agent.save(str(seed_path))
+    
+    print(f"✓ Saved trained models to: {models_path}")
+    
+    # Save summary statistics
+    summary_path = save_path / "summary.txt"
+    with open(summary_path, "w") as f:
+        f.write("="*80 + "\n")
+        f.write("PHASE 7: CONTINUOUS CONTROL - EXPERIMENT RESULTS\n")
+        f.write("="*80 + "\n\n")
+        
+        for agent_name, scenarios in results_dict.items():
+            f.write(f"\n{agent_name}\n")
+            f.write("-" * 40 + "\n")
+            
+            for scenario_name, seeds in scenarios.items():
+                f.write(f"\n  {scenario_name}:\n")
+                
+                for seed, metrics_list in seeds.items():
+                    final_100_reward = np.mean([m.reward for m in metrics_list[-100:]])
+                    final_100_success = sum(m.success for m in metrics_list[-100:]) / 100
+                    final_100_steps = np.mean([m.steps for m in metrics_list[-100:]])
+                    
+                    f.write(f"    Seed {seed}:\n")
+                    f.write(f"      Reward (last 100):  {final_100_reward:8.2f}\n")
+                    f.write(f"      Success Rate:      {final_100_success:6.1%}\n")
+                    f.write(f"      Avg Steps:         {final_100_steps:7.1f}\n")
+    
+    print(f"✓ Saved summary to: {summary_path}")
+    print(f"\n✓ All results saved to: {save_path}\n")
+    
+    return str(save_path)
+
+
+def load_experiment_results(results_dir: str) -> Dict[str, Dict[str, Dict[int, List[EpisodeMetrics]]]]:
+    """
+    Load saved experiment results from disk.
+    
+    Args:
+        results_dir: Path to saved results directory
+    
+    Returns:
+        {agent_name: {scenario_name: {seed: [EpisodeMetrics]}}}
+    """
+    import json
+    
+    results_dir = Path(results_dir)
+    metrics_path = results_dir / "metrics.json"
+    
+    if not metrics_path.exists():
+        raise FileNotFoundError(f"Metrics file not found: {metrics_path}")
+    
+    with open(metrics_path, "r") as f:
+        metrics_dict = json.load(f)
+    
+    # Convert back to EpisodeMetrics objects
+    results = {}
+    for agent_name, scenarios in metrics_dict.items():
+        results[agent_name] = {}
+        for scenario_name, seeds in scenarios.items():
+            results[agent_name][scenario_name] = {}
+            for seed_str, metrics_list in seeds.items():
+                seed = int(seed_str)
+                results[agent_name][scenario_name][seed] = [
+                    EpisodeMetrics(
+                        episode=m["episode"],
+                        reward=m["reward"],
+                        steps=m["steps"],
+                        success=m["success"],
+                        fuel_used=m["fuel_used"],
+                        final_position=m["final_position"],
+                    )
+                    for m in metrics_list
+                ]
+    
+    print(f"✓ Loaded results from: {results_dir}")
+    return results
+
+def moving_average(data: np.ndarray, window: int = 100) -> np.ndarray:
+    """Compute moving average with given window size."""
+    if len(data) < window:
+        return data
+    return np.convolve(data, np.ones(window) / window, mode="valid")
+
+
+def exponential_smoothing(data: np.ndarray, alpha: float = 0.1) -> np.ndarray:
+    """
+    Apply exponential smoothing to data.
+
+    Args:
+        data: Input data
+        alpha: Smoothing factor (0-1). Higher = more responsive.
+
+    Returns:
+        Smoothed data
+    """
+    smoothed = np.zeros_like(data, dtype=float)
+    smoothed[0] = data[0]
+    for i in range(1, len(data)):
+        smoothed[i] = alpha * data[i] + (1 - alpha) * smoothed[i - 1]
+    return smoothed
 
 # ============================================================================
 # EVALUATION (GREEDY POLICY)
@@ -280,7 +549,6 @@ def evaluate_agent(
     avg_steps = np.mean([m.steps for m in metrics_list])
 
     return metrics_list, float(avg_reward), float(success_rate), float(avg_steps)
-
 
 # ============================================================================
 # STATISTICAL ANALYSIS
@@ -420,99 +688,3 @@ class StatisticalAnalyzer:
         }
 
 
-# ============================================================================
-# RESULTS EXPORT
-# ============================================================================
-
-def export_results(
-    metrics_list: List[EpisodeMetrics],
-    output_path: str,
-    metadata: Optional[Dict] = None,
-):
-    """
-    Export episode metrics to JSON file.
-
-    Args:
-        metrics_list: List of EpisodeMetrics
-        output_path: Path to save JSON
-        metadata: Optional metadata to include
-    """
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    data = {
-        "metadata": metadata or {},
-        "episodes": [
-            {
-                "episode": m.episode,
-                "reward": m.reward,
-                "steps": m.steps,
-                "success": m.success,
-                "fuel_used": m.fuel_used,
-                "final_position": m.final_position,
-            }
-            for m in metrics_list
-        ],
-    }
-
-    with open(output_path, "w") as f:
-        json.dump(data, f, indent=2)
-
-    print(f"Results exported to {output_path}")
-
-
-# ============================================================================
-# MOVING AVERAGE & SMOOTHING
-# ============================================================================
-
-def moving_average(data: np.ndarray, window: int = 100) -> np.ndarray:
-    """Compute moving average with given window size."""
-    if len(data) < window:
-        return data
-    return np.convolve(data, np.ones(window) / window, mode="valid")
-
-
-def exponential_smoothing(data: np.ndarray, alpha: float = 0.1) -> np.ndarray:
-    """
-    Apply exponential smoothing to data.
-
-    Args:
-        data: Input data
-        alpha: Smoothing factor (0-1). Higher = more responsive.
-
-    Returns:
-        Smoothed data
-    """
-    smoothed = np.zeros_like(data, dtype=float)
-    smoothed[0] = data[0]
-    for i in range(1, len(data)):
-        smoothed[i] = alpha * data[i] + (1 - alpha) * smoothed[i - 1]
-    return smoothed
-
-
-if __name__ == "__main__":
-    print("Testing evaluation utilities...")
-
-    # Create dummy metrics
-    metrics = [
-        EpisodeMetrics(episode=i, reward=-100 - i, steps=50 + i, success=i > 80)
-        for i in range(100)
-    ]
-
-    rewards = np.array([m.reward for m in metrics])
-    print(f"Sample metrics created: {len(metrics)} episodes")
-
-    # Test statistics
-    analyzer = StatisticalAnalyzer()
-    convergence = analyzer.compute_convergence_metrics([m.reward for m in metrics])
-    print(f"Convergence metrics: {convergence}")
-
-    # Test confidence interval
-    ci = analyzer.compute_confidence_interval(rewards)
-    print(f"95% CI for rewards: {ci}")
-
-    # Test moving average
-    ma = moving_average(rewards, window=10)
-    print(f"Moving average length: {len(ma)} (original: {len(rewards)})")
-
-    print("✓ All evaluation utilities working!")
