@@ -152,14 +152,23 @@ The open questions raised by this study, temporal resolution, collusion risk, do
 ## References
 
 [1] Hazenberg, T., Ma, Y., Mohammadi Ziabari, S.S., and van Rijswijk, M. (2025). Multi-Agent Reinforcement Learning for Dynamic Pricing in Supply Chains: Benchmarking Strategic Agent Behaviours under Realistically Simulated Market Conditions. arXiv:2507.02698. University of Amsterdam / KPMG N.V.
+
 [2]Maestre, R., Duque, J., Rubio, A., and Arevalo, J. (2018). Reinforcement Learning for Fair Dynamic Pricing. Intelligent Systems Conference 2018. BBVA Data & Analytics, Madrid, Spain. arXiv:1803.09967.
+
 [3] Sutton, R.S. and Barto, A.G. (2018). Reinforcement Learning: An Introduction (2nd ed.). MIT Press.
+
 [4] Lowe, R., Wu, Y., Tamar, A., Harb, J., Abbeel, P., and Mordatch, I. (2017). Multi-Agent Actor-Critic for Mixed Cooperative-Competitive Environments. Advances in Neural Information Processing Systems 30 (NeurIPS 2017).
+
 [5] Mnih, V., Kavukcuoglu, K., Silver, D. et al. (2015). Human-level control through deep reinforcement learning. Nature, 518, 529-533.
+
 [6] Ke, G., Meng, Q., Finley, T. et al. (2017). LightGBM: A Highly Efficient Gradient Boosting Decision Tree. NeurIPS 2017.
+
 [7] Rashid, T., Samvelyan, M., de Witt, C.S., Farquhar, G., Foerster, J., and Whiteson, S. (2018). QMIX: Monotonic Value Function Factorisation for Deep Multi-Agent Reinforcement Learning. ICML 2018.
+
 [8] Cachon, G. and Feldman, P. (2010). Dynamic Versus Static Pricing in the Presence of Strategic Consumers. Working Paper, The Wharton School, University of Pennsylvania. 
+
 [9] Jain, R., Chiu, D., and Hawe, W. (1984). A Quantitative Measure of Fairness and Discrimination for Resource Allocation in Shared Computer Systems. DEC Technical Report TR-301.
+
 [10] Chen, D. (2012). Online Retail II Dataset. UCI Machine Learning Repository. https://doi.org/10.24432/C5CG6D
 
 
