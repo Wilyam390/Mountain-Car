@@ -344,7 +344,7 @@ Both systems chose semantic game-state observations over pixel-based inputs. Thi
 
 ## 9. Conclusion
 
-OpenAI Five and PyLoL represent two points on the same trajectory: applying deep reinforcement learning to MOBA games via self-play, shaped rewards, and PPO+LSTM policies. They differ not in algorithmic approach but in scale — by approximately seven orders of magnitude in compute — and in environmental infrastructure, where Valve's open Bot API enabled OpenAI and Riot's closed ecosystem forced PyLoL into a constrained simulation.
+OpenAI Five and PyLoL represent two points on the same trajectory: applying deep reinforcement learning to MOBA games via self-play, shaped rewards, and PPO+LSTM policies. They differ not in algorithmic approach but in scale by approximately seven orders of magnitude in compute and in environmental infrastructure, where Valve's open Bot API enabled OpenAI and Riot's closed ecosystem forced PyLoL into a constrained simulation.
 
 The core lesson is not that OpenAI discovered a novel algorithm for MOBA games. They discovered that **the problem is a large-scale distributed systems engineering challenge as much as a research challenge**, and this unlocked what pure algorithmic innovation had not. PyLoL inherits this framing faithfully, and its limitations illuminate exactly how much of OpenAI Five's success was architectural and infrastructural rather than purely scientific.
 
